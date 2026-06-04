@@ -15,10 +15,10 @@
     create table if not exists "{{ raw }}".raw_orders (
       id varchar, customer varchar, ordered_at timestamp,
       store_id varchar, subtotal integer, tax_paid integer, order_total integer,
-      _ingested_at timestamp
+      last_loaded_at timestamptz
     );
     create table if not exists "{{ raw }}".raw_items (
-      id varchar, order_id varchar, sku varchar, unit_price integer
+      id varchar, order_id varchar, sku varchar, last_loaded_at timestamptz
     );
   {% endset %}
   {% do run_query(ddl) %}
@@ -29,24 +29,28 @@
 {% macro datagen_load_masters_from_csv(raw) %}
   {% set sql %}
     create or replace table "{{ raw }}".raw_customers as
-      select cast(id as varchar) as id, cast(name as varchar) as name
+      select cast(id as varchar) as id, cast(name as varchar) as name,
+             current_timestamp as last_loaded_at
       from read_csv_auto('master_data/customers.csv', header=true);
 
     create or replace table "{{ raw }}".raw_products as
       select cast(sku as varchar) as sku, cast(name as varchar) as name,
              cast(type as varchar) as type, cast(price as integer) as price,
-             cast(description as varchar) as description
+             cast(description as varchar) as description,
+             current_timestamp as last_loaded_at
       from read_csv_auto('master_data/products.csv', header=true);
 
     create or replace table "{{ raw }}".raw_stores as
       select cast(id as varchar) as id, cast(name as varchar) as name,
-             cast(opened_at as timestamp) as opened_at, cast(tax_rate as double) as tax_rate
+             cast(opened_at as timestamp) as opened_at, cast(tax_rate as double) as tax_rate,
+             current_timestamp as last_loaded_at
       from read_csv_auto('master_data/stores.csv', header=true);
 
     create or replace table "{{ raw }}".raw_supplies as
       select cast(id as varchar) as id, cast(name as varchar) as name,
              cast(cost as integer) as cost, cast(perishable as boolean) as perishable,
-             cast(sku as varchar) as sku
+             cast(sku as varchar) as sku,
+             current_timestamp as last_loaded_at
       from read_csv_auto('master_data/supplies.csv', header=true);
   {% endset %}
   {% do run_query(sql) %}

@@ -30,11 +30,11 @@
   {# 2. 実行回数を採番し _gen_state に記録 #}
   {% set run_number = datagen_next_run_number(raw) %}
 
-  {# 3. トランザクションを n_orders 件追記 #}
-  {% do datagen_generate_transactions(raw, n_orders) %}
-
-  {# 4. 実行回数に応じてマスターを適宜更新 #}
+  {# 3. 実行回数に応じてマスターを適宜更新 (値上げ等を先に反映させてから金額確定する) #}
   {% do datagen_update_masters(raw, run_number) %}
+
+  {# 4. トランザクションを n_orders 件追記 (金額は更新後の現在価格で確定) #}
+  {% do datagen_generate_transactions(raw, n_orders) %}
 
   {# サマリ出力 #}
   {% set summary = run_query(

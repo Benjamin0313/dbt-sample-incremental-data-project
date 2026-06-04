@@ -17,10 +17,11 @@
     {% set fnames = "['Aaron','Jessica','Carol','Daniel','Emily','Frank','Grace','Henry','Isabel','Jack','Karen','Liam','Maria','Noah','Olivia','Paul','Quinn','Rachel','Sam','Tina','Umar','Vera','Wade','Xena','Yusuf','Zoe']" %}
     {% set lnames = "['Gardner','James','Smith','Johnson','Brown','Davis','Miller','Wilson','Moore','Taylor','Anderson','Thomas','Jackson','White','Harris','Martin','Lee','Walker','Hall','Allen','Young','King','Wright','Scott','Green','Baker']" %}
     {% do run_query(
-        'insert into "' ~ raw ~ '".raw_customers '
+        'insert into "' ~ raw ~ '".raw_customers (id, name, last_loaded_at) '
         ~ 'select uuid()::varchar, '
         ~ fnames ~ '[1 + floor(random() * array_length(' ~ fnames ~ "))::int] || ' ' || "
-        ~ lnames ~ '[1 + floor(random() * array_length(' ~ lnames ~ '))::int] '
+        ~ lnames ~ '[1 + floor(random() * array_length(' ~ lnames ~ '))::int], '
+        ~ 'current_timestamp '
         ~ 'from range(1, 4)'
     ) %}
     {% do datagen_dump_master(raw, 'customers') %}
@@ -31,10 +32,10 @@
   {% if run_number % 7 == 0 %}
     {% set store_names = "['Boston','Austin','Denver','Seattle','Miami']" %}
     {% set added = run_query(
-        'insert into "' ~ raw ~ '".raw_stores '
+        'insert into "' ~ raw ~ '".raw_stores (id, name, opened_at, tax_rate, last_loaded_at) '
         ~ 'select uuid()::varchar, '
         ~ store_names ~ '[1 + ((select count(*) from "' ~ raw ~ '".raw_stores) - 3)], '
-        ~ "now(), round((0.03 + random() * 0.05)::numeric, 4)::double "
+        ~ "now(), round((0.03 + random() * 0.05)::numeric, 4)::double, current_timestamp "
         ~ 'where (select count(*) from "' ~ raw ~ '".raw_stores) < 8'
     ) %}
     {% do datagen_dump_master(raw, 'stores') %}
@@ -54,12 +55,13 @@
   {# ----- 4回ごと(初回除く): 新商品を追加 ----- #}
   {% if run_number % 4 == 0 and run_number > 1 %}
     {% do run_query(
-        'insert into "' ~ raw ~ '".raw_products values ('
+        'insert into "' ~ raw ~ '".raw_products (sku, name, type, price, description, last_loaded_at) values ('
         ~ "'NEW-" ~ run_number ~ "', "
         ~ "'limited edition #" ~ run_number ~ "', "
         ~ "case when random() < 0.5 then 'jaffle' else 'beverage' end, "
         ~ "(400 + floor(random() * 1200)::int), "
-        ~ "'seasonal special introduced on run #" ~ run_number ~ "')"
+        ~ "'seasonal special introduced on run #" ~ run_number ~ "', "
+        ~ "current_timestamp)"
     ) %}
     {% do datagen_dump_master(raw, 'products') %}
     {{ log("[datagen]   master update: +1 product NEW-" ~ run_number ~ " (run #" ~ run_number ~ ", products.csv 更新)", info=True) }}

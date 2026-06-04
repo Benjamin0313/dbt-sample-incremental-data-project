@@ -34,4 +34,4 @@ models:
               arguments:
                 values: ["new", "returning"]
       - name: _built_at
-        description: この行が作られた時刻。incremental なので既存行は再計算されず、初回構築時の値で固定される(新規顧客の行だけ新しい時刻になる)。
+        description: この行が再計算された時刻。upsert なので最終購入が進んだ顧客と新規顧客だけ新しい時刻になり、変化のない顧客は据え置き。

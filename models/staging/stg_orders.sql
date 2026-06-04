@@ -20,7 +20,7 @@ renamed as (
         ---------- timestamps
         cast(ordered_at as date) as order_date,
         ordered_at,
-        _ingested_at
+        last_loaded_at
     from source
 )
 

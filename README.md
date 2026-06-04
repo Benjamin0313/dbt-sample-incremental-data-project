@@ -10,6 +10,7 @@ _powered by the dbt Fusion engine + DuckDB_
 **データ到着まわりの挙動**をローカルだけで検証できます。
 
 生成は `on-run-start` フック(`dbt_project.yml`)で **`dbt run` / `dbt build` のたびに自動実行**されます。
+全源泉は取込時刻 `last_loaded_at` を持ち、実行のたびに更新されます。
 
 ## マスターは CSV(`master_data/`)で管理
 
@@ -50,7 +51,7 @@ dbt run-operation generate_raw_data --args '{n_orders: 120}' --profiles-dir .  #
 到着検証(incremental)。2つの戦略を試せます:
 
 ```bash
-# orders_inc: _ingested_at(取込時刻)を高水位マークに、新しく到着した注文だけ追記
+# orders_inc: last_loaded_at(取込時刻)を高水位マークに、新しく到着した注文だけ追記
 dbt build --select orders_inc --profiles-dir .
 dbt build --select orders_inc --full-refresh --profiles-dir .   # 全件作り直し
 
@@ -61,9 +62,11 @@ dbt build --select +customers --profiles-dir .
 dbt build --select customers --full-refresh --profiles-dir .    # 集計を最新で作り直し
 ```
 
-> [!NOTE]
-> 商品の値上げ(10回ごと)後も過去注文は当時の価格のまま(注文明細 `raw_items.unit_price` に購入時単価をスナップショット)。
-> なので `order_items` マートの `product_price` は「購入時単価」を指し、現在のカタログ価格は `products` マートが持ちます。
+source freshness(`last_loaded_at` ベース):
+
+```bash
+dbt source freshness --profiles-dir .
+```
 
 リセット:
 

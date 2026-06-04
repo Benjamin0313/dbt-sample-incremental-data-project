@@ -5,24 +5,22 @@ sources:
     schema: "{{ target.schema }}_raw"
     description: >
       Jaffle Shop の源泉データ。CSV シードではなく datagen マクロが生成・追記する。
-      dbt run / dbt build のたびにトランザクション(raw_orders / raw_items)が約50件ずつ増える。
+      全テーブルに last_loaded_at(取込時刻)を持つ。
     tables:
       - name: raw_customers
-        description: 顧客マスター。実行回数に応じて適宜追加される。
+        description: 顧客マスター。
       - name: raw_orders
         description: 注文ヘッダ。1実行あたり約50件追記されるトランザクション。
         config:
-          loaded_at_field: ordered_at
+          loaded_at_field: last_loaded_at
           freshness:
             warn_after: { count: 24, period: hour }
             error_after: { count: 48, period: hour }
       - name: raw_items
         description: 注文明細。注文1件あたり1〜3件。
       - name: raw_stores
-        description: 店舗マスター。7回ごとに新店舗が増える(最大8店舗)。
-        config:
-          loaded_at_field: opened_at
+        description: 店舗マスター。
       - name: raw_products
-        description: 商品マスター。値上げや新商品追加が適宜発生する。
+        description: 商品マスター。
       - name: raw_supplies
-        description: 仕入マスター。商品1件あたりの原価構成。
+        description: 仕入マスター。

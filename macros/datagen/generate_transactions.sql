@@ -45,18 +45,17 @@
   {% endset %}
   {% do run_query(batch) %}
 
-  {# 2. 注文ヘッダを raw_orders へ (金額は後で確定するので一旦0、_ingested_at は今回の取込時刻) #}
+  {# 2. 注文ヘッダを raw_orders へ (金額は後で確定するので一旦0、last_loaded_at は今回の取込時刻) #}
   {% do run_query(
       'insert into "' ~ raw ~ '".raw_orders '
       ~ 'select order_id, customer_id, ordered_at, store_id, 0, 0, 0, now() from "' ~ raw ~ '"._datagen_batch'
   ) %}
 
-  {# 3. 明細を raw_items へ (注文ごとに item_count 件、sku はランダム)
-     unit_price = 購入時点の商品価格をスナップショット (後で値上げされても過去注文は不変) #}
+  {# 3. 明細を raw_items へ (注文ごとに item_count 件、sku はランダム) #}
   {% set items %}
     insert into "{{ raw }}".raw_items
     with p as (
-      select sku, price, row_number() over (order by sku) as rn from "{{ raw }}".raw_products
+      select sku, row_number() over (order by sku) as rn from "{{ raw }}".raw_products
     ),
     np as (
       select count(*) as n from "{{ raw }}".raw_products
@@ -68,27 +67,27 @@
       from "{{ raw }}"._datagen_batch b
       join range(1, 4) g(k) on g.k <= b.item_count
     )
-    select uuid()::varchar as id, e.order_id, p.sku, p.price
+    select uuid()::varchar as id, e.order_id, p.sku, now()
     from exploded e
     join p on p.rn = e.ppick;
   {% endset %}
   {% do run_query(items) %}
 
-  {# 4. 今回バッチの注文金額を明細の購入時単価合計と税率から確定 #}
+  {# 4. 注文金額を明細×商品マスタの現在価格と店舗税率から確定 (全注文を再計算するので値上げも反映) #}
   {% set settle %}
     update "{{ raw }}".raw_orders o
     set subtotal    = sub.s,
         tax_paid    = round(sub.s * st.tax_rate)::int,
         order_total = sub.s + round(sub.s * st.tax_rate)::int
     from (
-      select order_id, sum(unit_price) as s
-      from "{{ raw }}".raw_items
-      group by order_id
+      select i.order_id, sum(p.price) as s
+      from "{{ raw }}".raw_items i
+      join "{{ raw }}".raw_products p on p.sku = i.sku
+      group by i.order_id
     ) sub,
     "{{ raw }}".raw_stores st
     where o.id = sub.order_id
-      and st.id = o.store_id
-      and o.id in (select order_id from "{{ raw }}"._datagen_batch);
+      and st.id = o.store_id;
   {% endset %}
   {% do run_query(settle) %}
 

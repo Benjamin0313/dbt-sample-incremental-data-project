@@ -30,8 +30,8 @@ generate_raw_data(n_orders)
   1. datagen_ensure_tx_tables(raw)            … orders / items を用意
   2. datagen_load_masters_from_csv(raw)       … CSV → raw マスター (手動編集を反映)
   3. datagen_next_run_number(raw)             … _gen_state を採番・記録 → run_number
-  4. datagen_generate_transactions(raw, n)    … 注文+明細を +n 件
-  5. datagen_update_masters(raw, run_number)  … 必要なら更新 → datagen_dump_master で CSV 書き戻し
+  4. datagen_update_masters(raw, run_number)  … 必要なら更新 → datagen_dump_master で CSV 書き戻し
+  5. datagen_generate_transactions(raw, n)    … 注文+明細を +n 件 (金額は更新後の価格で確定)
 ```
 
 ## マスターCSV(`master_data/`)
@@ -48,10 +48,12 @@ CSV が源泉マスターの源。手で行を足す/値を変えると次回実
 
 ## 生成・管理されるテーブル(`main_raw` スキーマ)
 
+全テーブルに取込時刻 `last_loaded_at` を持つ(マスターは毎回フルリロードで全行更新、トランザクションは新規行に付与)。
+
 | テーブル | 区分 | 元 | 更新タイミング |
 | --- | --- | --- | --- |
-| `raw_orders` | トランザクション | マクロ生成 | 毎回 +50件(`_ingested_at` で incremental の差分判定) |
-| `raw_items` | トランザクション | マクロ生成 | 毎回(注文に連動、1注文1〜3件)。`unit_price` に購入時単価をスナップショット |
+| `raw_orders` | トランザクション | マクロ生成 | 毎回 +50件(`last_loaded_at` で incremental の差分判定) |
+| `raw_items` | トランザクション | マクロ生成 | 毎回(注文に連動、1注文1〜3件) |
 | `raw_customers` | マスター | `customers.csv` | 5回ごとに +3 → CSV 書き戻し |
 | `raw_products` | マスター | `products.csv` | 4回ごとに新商品+1、10回ごとに1件10%値上げ → CSV 書き戻し |
 | `raw_stores` | マスター | `stores.csv` | 7回ごとに +1(最大8) → CSV 書き戻し |
@@ -62,7 +64,7 @@ CSV が源泉マスターの源。手で行を足す/値を変えると次回実
 ## 実装メモ
 
 - マスターは毎回 CSV から `create or replace` するため、手動編集が常に反映される。マクロ更新は DB に適用後すぐ `datagen_dump_master` で CSV に書き戻す。
-- 注文明細(`raw_items`)は生成時の商品価格を `unit_price` にスナップショットし、注文金額もこれで確定する。これにより「10回ごとの値上げ」後も**過去注文は当時の価格のまま**(新注文だけ新価格)になり、`orders` マートの `order_items_subtotal = subtotal` 不変条件が壊れない。`order_items` マートの `product_price` は商品マスターの現在価格ではなく**購入時単価**を指す。
+- 注文金額は明細×**商品マスタの現在価格**と店舗税率から確定。値上げを反映するため毎回 全注文を再計算する(`update_masters` を `generate_transactions` より先に呼び、値上げ後の価格で金額を確定)。`order_items` マートの `product_price` は商品マスタの価格。
 - `run_query` は呼び出しごとに接続が分かれ **temp table が共有されない**ため、バッチ組み立ては raw スキーマの実テーブル `_datagen_batch` を使い最後に drop している。
 - DuckDB の `::int` キャストは**四捨五入**。ランダムインデックスが範囲外に出て join で行落ちするため、`floor(random() * N)::int` で 0..N-1 に揃えている。
 - DB(`jaffle_shop.duckdb`)を消すとマスターは現在の CSV から作り直される。マスターも完全初期化したいときは CSV を git で戻す。
