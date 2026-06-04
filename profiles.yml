@@ -1,0 +1,11 @@
+# ローカル検証用 profiles.yml (このディレクトリを --profiles-dir に指定して使う)
+#   例: dbt build --profiles-dir .
+# 源泉も含めてすべて 1 つの DuckDB ファイル(jaffle_shop.duckdb)に入る。外部DB不要。
+jaffle_shop:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: jaffle_shop.duckdb
+      schema: main
+      threads: 4

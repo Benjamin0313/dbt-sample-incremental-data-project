@@ -1,0 +1,10 @@
+[project]
+name = "jaffle-shop-datagen"
+version = "0.1.0"
+description = "源泉をマクロ生成に置き換えた jaffle_shop サンプル。ローカルで DuckDB を直接クエリするための依存を管理する。"
+requires-python = ">=3.11"
+dependencies = [
+    # 源泉(jaffle_shop.duckdb)を直接クエリするための DuckDB Python ライブラリ。
+    # dbt 本体は dbt-fusion(DuckDB アダプタ内蔵)を別途インストール済み前提。
+    "duckdb==1.5.3",
+]

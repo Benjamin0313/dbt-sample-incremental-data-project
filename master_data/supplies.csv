@@ -1,0 +1,21 @@
+id,name,cost,perishable,sku
+SUP-1,packaging,7,false,BEV-001
+SUP-10,packaging,7,false,JAF-005
+SUP-2,packaging,7,false,BEV-002
+SUP-3,packaging,7,false,BEV-003
+SUP-4,packaging,7,false,BEV-004
+SUP-5,packaging,7,false,BEV-005
+SUP-6,packaging,7,false,JAF-001
+SUP-7,packaging,7,false,JAF-002
+SUP-8,packaging,7,false,JAF-003
+SUP-9,packaging,7,false,JAF-004
+SUPF-1,main ingredient,12,true,BEV-001
+SUPF-10,main ingredient,30,true,JAF-005
+SUPF-2,main ingredient,12,true,BEV-002
+SUPF-3,main ingredient,12,true,BEV-003
+SUPF-4,main ingredient,12,true,BEV-004
+SUPF-5,main ingredient,12,true,BEV-005
+SUPF-6,main ingredient,30,true,JAF-001
+SUPF-7,main ingredient,30,true,JAF-002
+SUPF-8,main ingredient,30,true,JAF-003
+SUPF-9,main ingredient,30,true,JAF-004
