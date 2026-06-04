@@ -1,12 +1,10 @@
 {#
   generate_raw_data
   -----------------
-  源泉(raw)テーブルをマクロで生成・追記するエントリポイント。
-
-  - 毎回: マスター(customers / products / stores / supplies)を master_data/*.csv からロード
-          (= ユーザーが手で編集したCSVもそのまま反映される)
-  - 毎回: トランザクション(orders / items)を n_orders 件だけ既存マスターから整合的に生成して追記
-  - 適宜: 実行回数(_gen_state)に応じてマスターを更新し、変更分は CSV へ書き戻し
+  源泉(raw)をマクロで生成・追記するエントリポイント。実行のたびに:
+    - マスター(customers)を master_data/customers.csv からロード (手編集も反映)
+    - 顧客を2人追加し customers.csv へ書き戻し
+    - 注文を n_orders 件追記
 
   呼び出し方:
     - 自動:   dbt_project.yml の on-run-start フック経由で dbt run / dbt build のたびに実行
@@ -21,35 +19,27 @@
   {% set raw = target.schema ~ '_raw' %}
   {% do run_query('create schema if not exists "' ~ raw ~ '"') %}
 
-  {# 1a. トランザクション表を用意 (CSV管理外) #}
+  {# 1. トランザクション表を用意 + マスターを CSV からロード #}
   {% do datagen_ensure_tx_tables(raw) %}
-
-  {# 1b. マスターを master_data/*.csv からロード (毎回フルリフレッシュ) #}
   {% do datagen_load_masters_from_csv(raw) %}
 
   {# 2. 実行回数を採番し _gen_state に記録 #}
   {% set run_number = datagen_next_run_number(raw) %}
 
-  {# 3. 実行回数に応じてマスターを適宜更新 (値上げ等を先に反映させてから金額確定する) #}
+  {# 3. マスターを更新 (顧客 +2) してから注文を生成 #}
   {% do datagen_update_masters(raw, run_number) %}
-
-  {# 4. トランザクションを n_orders 件追記 (金額は更新後の現在価格で確定) #}
   {% do datagen_generate_transactions(raw, n_orders) %}
 
   {# サマリ出力 #}
   {% set summary = run_query(
-      "select "
-      ~ "(select count(*) from \"" ~ raw ~ "\".raw_orders)    as orders, "
-      ~ "(select count(*) from \"" ~ raw ~ "\".raw_items)     as items, "
-      ~ "(select count(*) from \"" ~ raw ~ "\".raw_customers) as customers, "
-      ~ "(select count(*) from \"" ~ raw ~ "\".raw_products)  as products, "
-      ~ "(select count(*) from \"" ~ raw ~ "\".raw_stores)    as stores"
+      'select '
+      ~ '(select count(*) from "' ~ raw ~ '".raw_orders) as orders, '
+      ~ '(select count(*) from "' ~ raw ~ '".raw_customers) as customers'
   ) %}
   {% set r = summary.rows[0] %}
   {{ log(
-      "[datagen] run #" ~ run_number ~ " (+" ~ n_orders ~ " orders) | totals -> "
-      ~ "orders=" ~ r[0] ~ " items=" ~ r[1]
-      ~ " customers=" ~ r[2] ~ " products=" ~ r[3] ~ " stores=" ~ r[4],
+      "[datagen] run #" ~ run_number ~ " (+" ~ n_orders ~ " orders, +2 customers) | "
+      ~ "totals -> orders=" ~ r[0] ~ " customers=" ~ r[1],
       info=True
   ) }}
 {% endmacro %}
