@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: 注文(1行1注文)。
+    columns:
+      - name: order_id
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_customers
+    description: 顧客(1行1顧客)。
+    columns:
+      - name: customer_id
+        data_tests:
+          - not_null
+          - unique

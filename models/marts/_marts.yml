@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: customer_summary
+    description: 顧客ごとの注文サマリ(table、毎回フルリフレッシュ)。
+    columns:
+      - name: customer_id
+        data_tests:
+          - not_null
+          - unique
+  - name: orders_inc
+    description: 新着注文だけを追記する incremental モデル(高水位マーク last_loaded_at)。
+    columns:
+      - name: order_id
+        data_tests:
+          - not_null
+          - unique

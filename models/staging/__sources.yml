@@ -4,23 +4,14 @@ sources:
   - name: ecom
     schema: "{{ target.schema }}_raw"
     description: >
-      Jaffle Shop の源泉データ。CSV シードではなく datagen マクロが生成・追記する。
-      全テーブルに last_loaded_at(取込時刻)を持つ。
+      datagen マクロが生成・追記する源泉。全テーブルに last_loaded_at(取込時刻)を持つ。
     tables:
       - name: raw_customers
         description: 顧客マスター。
       - name: raw_orders
-        description: 注文ヘッダ。1実行あたり約50件追記されるトランザクション。
+        description: 注文。1実行あたり約50件追記されるトランザクション。
         config:
           loaded_at_field: last_loaded_at
           freshness:
             warn_after: { count: 24, period: hour }
             error_after: { count: 48, period: hour }
-      - name: raw_items
-        description: 注文明細。注文1件あたり1〜3件。
-      - name: raw_stores
-        description: 店舗マスター。
-      - name: raw_products
-        description: 商品マスター。
-      - name: raw_supplies
-        description: 仕入マスター。

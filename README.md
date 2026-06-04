@@ -37,9 +37,16 @@ _powered by the dbt Fusion engine + DuckDB_
 - 直接クエリ用に duckdb CLI(`brew install duckdb`)。Python から触る場合は [uv](https://docs.astral.sh/uv/)(未導入なら `curl -LsSf https://astral.sh/uv/install.sh | sh`)。
 
 ```bash
-dbt deps                          # パッケージ取得 (dbt_utils)
 dbt build --profiles-dir .        # 源泉+50 → staging/marts。もう一度叩くとさらに+50
 ```
+
+モデルは最小構成です:
+
+| モデル | 種別 | 内容 |
+| --- | --- | --- |
+| `stg_orders` / `stg_customers` | view | 源泉の素直な整形 |
+| `customer_summary` | table | 顧客ごとの注文数・売上(毎回フルリフレッシュ) |
+| `orders_inc` | incremental | 新着注文だけ追記(高水位マーク `last_loaded_at`) |
 
 源泉だけを手動で増やす:
 
@@ -48,18 +55,11 @@ dbt run-operation generate_raw_data --profiles-dir .                      # +50
 dbt run-operation generate_raw_data --args '{n_orders: 120}' --profiles-dir .  # 件数指定
 ```
 
-到着検証(incremental)。2つの戦略を試せます:
+到着検証(incremental):
 
 ```bash
-# orders_inc: last_loaded_at(取込時刻)を高水位マークに、新しく到着した注文だけ追記
-dbt build --select orders_inc --profiles-dir .
+dbt build --select orders_inc --profiles-dir .                  # 2回目以降は直近バッチ分だけ追加
 dbt build --select orders_inc --full-refresh --profiles-dir .   # 全件作り直し
-
-# customers: last_purchased_at(最終購入日時, μs)を高水位マークにした upsert。
-#   購入が進んだ顧客だけ行を再計算してマージ、変化なしの顧客は据え置き。
-#   ※ 上流 orders を含めて再構築する +customers で実行する
-dbt build --select +customers --profiles-dir .
-dbt build --select customers --full-refresh --profiles-dir .    # 集計を最新で作り直し
 ```
 
 source freshness(`last_loaded_at` ベース):
@@ -82,8 +82,8 @@ duckdb CLI で `jaffle_shop.duckdb` に直接 SQL を投げます。源泉は `m
 ```bash
 # 読むだけなら -readonly を付ける(源泉は増えない)
 duckdb -readonly jaffle_shop.duckdb "select * from main_raw._gen_state order by run_number"
-duckdb -readonly jaffle_shop.duckdb "select count(*) from main_raw.raw_orders"
-duckdb -readonly jaffle_shop.duckdb "select * from main.orders limit 5"
+duckdb -readonly jaffle_shop.duckdb "select count(*) from main.orders_inc"
+duckdb -readonly jaffle_shop.duckdb "select * from main.customer_summary limit 5"
 
 # 対話シェル(.tables / .schema なども使える)
 duckdb -readonly jaffle_shop.duckdb
