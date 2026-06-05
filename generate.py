@@ -31,19 +31,19 @@ class SnowflakeTarget:
     placeholder = "%s"
     ts_type = "timestamp_tz"
 
-    def __init__(self, cfg):
+    def __init__(self):
         import snowflake.connector
+        # 接続情報はすべて env var(.env)から。源泉は dbt の <SF_SCHEMA>_raw に書く。
+        self.schema = os.environ["SF_SCHEMA"] + "_raw"
         self.con = snowflake.connector.connect(
-            account=os.environ[cfg["account_env"]],
-            user=os.environ[cfg["user_env"]],
-            private_key_file=os.environ[cfg["private_key_env"]],
-            role=cfg["role"],
-            warehouse=cfg["warehouse"],
-            database=cfg["database"],
-            schema=cfg["schema"],
+            account=os.environ["SF_ACCOUNT"],
+            user=os.environ["SF_USER"],
+            private_key_file=os.environ["SF_PRIVATE_KEY_PATH"],
+            role=os.environ["SF_ROLE"],
+            warehouse=os.environ["SF_WAREHOUSE"],
+            database=os.environ["SF_DATABASE"],
             autocommit=True,
         )
-        self.schema = cfg["schema"]
 
     def execute(self, sql, params=None):
         with self.con.cursor() as cur:
@@ -176,7 +176,7 @@ def run_source(tgt, name, spec, profiles, minutes_override):
 
 def run_once(cfg, minutes_override):
     """1 tick ぶん生成する。Snowflake 接続はその都度開いて閉じる(セッション切れに強い)。"""
-    tgt = SnowflakeTarget(cfg["target"])
+    tgt = SnowflakeTarget()
     try:
         tgt.execute(f"create schema if not exists {tgt.schema}")
         ensure_state(tgt)

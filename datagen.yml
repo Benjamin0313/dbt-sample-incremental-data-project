@@ -3,17 +3,6 @@
 #   uv run python generate.py --daemon --interval 60   # 常駐。60秒ごとに実経過ぶんを生成
 #   uv run python generate.py                          # 単発。前回からの実経過時間で件数を算出
 #   uv run python generate.py --minutes 30             # 単発。30分経過したものとして生成(検証用)
-# tick の端数は state に繰り越すので、短間隔デーモンでも「5分に1人」を正しく実現する。
-
-# 出力先 Snowflake。dbt の profiles.yml と source スキーマ(<dbt schema>_raw)を合わせる。
-target:
-  account_env: SF_ACCOUNT             # 認証は datum 標準のキーペア(env var)
-  user_env: SF_USER
-  private_key_env: SF_PRIVATE_KEY_PATH
-  role: accountadmin
-  warehouse: d_harato_wh
-  database: d_harato_db
-  schema: jaffle_shop_raw             # dbt schema=jaffle_shop → source は jaffle_shop_raw
 
 # tick プロファイル: 「N分に1件」で指定(update_every_min を省くと更新なし)
 profiles:
@@ -26,7 +15,7 @@ sources:
     tick: medium
     raw_style: upsert          # PK で merge。更新された行だけ last_loaded_at が進む
     primary_key: customer_id
-    seed: 50                   # 初回(状態なし)に投入する件数
+    seed: 50                   # 初回に投入する件数
     fields:
       customer_id: { gen: uuid }
       name:        { gen: faker, method: name }

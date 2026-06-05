@@ -11,9 +11,9 @@ jaffle_shop:
       account: "{{ env_var('SF_ACCOUNT') }}"
       user: "{{ env_var('SF_USER') }}"
       private_key_path: "{{ env_var('SF_PRIVATE_KEY_PATH') }}"
-      role: accountadmin
-      database: d_harato_db
-      warehouse: d_harato_wh
-      schema: jaffle_shop            # 源泉は jaffle_shop_raw、モデルは jaffle_shop スキーマ
+      role: "{{ env_var('SF_ROLE') }}"
+      database: "{{ env_var('SF_DATABASE') }}"
+      warehouse: "{{ env_var('SF_WAREHOUSE') }}"
+      schema: "{{ env_var('SF_SCHEMA') }}"   # 源泉は <SF_SCHEMA>_raw、モデルは SF_SCHEMA
       threads: 8
       client_session_keep_alive: false

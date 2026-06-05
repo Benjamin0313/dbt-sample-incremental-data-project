@@ -40,15 +40,20 @@ uv sync                  # 依存(dbt-snowflake / faker / pyyaml)をバージョ
 cp .env.sample .env
 ```
 
-`.env` の中身（自分の値に置き換える）:
+`.env` の中身（自分の値に置き換える）。**dbt と generator が共用**する:
 
 ```bash
 export SF_ACCOUNT=ar29333.ap-northeast-1.aws        # Snowflake アカウント識別子
 export SF_USER=you@datumstudio.jp                   # ユーザー
 export SF_PRIVATE_KEY_PATH=/Users/you/.ssh/key.p8   # 秘密鍵(.p8)のパス
+export SF_ROLE=accountadmin                         # ロール
+export SF_WAREHOUSE=d_harato_wh                     # ウェアハウス
+export SF_DATABASE=d_harato_db                      # データベース
+export SF_SCHEMA=jaffle_shop                        # モデルのスキーマ(源泉は <SF_SCHEMA>_raw)
 ```
 
 > `.env` は `.gitignore` 済み（コミットされない）。チームで共有するのは `.env.sample` だけ。
+> 接続情報はすべて `.env` に集約（`profiles.yml` も `datagen.yml` もハードコードしない）。
 
 設定したら、毎回シェルで読み込んでから dbt / generate.py を使う:
 
@@ -225,14 +230,16 @@ profiles:
 
 ## 接続先（Snowflake）
 
-| 項目 | 値 |
-| --- | --- |
-| 認証 | キーペア（env-var: `SF_ACCOUNT` / `SF_USER` / `SF_PRIVATE_KEY_PATH`） |
-| role | `accountadmin`（専用スキーマ作成に `CREATE SCHEMA` が必要なため） |
-| database / warehouse | `d_harato_db` / `d_harato_wh` |
-| schema | モデル=`jaffle_shop` / 源泉=`jaffle_shop_raw` |
+接続情報はすべて **`.env`** に集約。`profiles.yml`(dbt) と `generate.py`(源泉) が共用する。
 
-接続先は `profiles.yml`（dbt）と `datagen.yml` の `target:`（源泉）で定義。別の DB/WH/role に変えるときは両方を直す。
+| env var | 用途 |
+| --- | --- |
+| `SF_ACCOUNT` / `SF_USER` / `SF_PRIVATE_KEY_PATH` | キーペア認証 |
+| `SF_ROLE` | ロール（専用スキーマ作成に `CREATE SCHEMA` が要る。例 `accountadmin`） |
+| `SF_DATABASE` / `SF_WAREHOUSE` | DB / ウェアハウス |
+| `SF_SCHEMA` | モデルのスキーマ。源泉は `<SF_SCHEMA>_raw` に入る |
+
+別の DB/WH/role/schema に変えるときは `.env` を直すだけ（両ファイルに反映される）。
 
 ---
 
