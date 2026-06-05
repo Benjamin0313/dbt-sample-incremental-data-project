@@ -1,12 +1,10 @@
 #!/usr/bin/env python
-"""源泉ジェネレータ。datagen.yml の宣言に従って源泉(raw_*)を生成・追記する。
+"""源泉ジェネレータ。datagen.yml の宣言に従って Snowflake の源泉(raw_*)を生成・追記する。
 
-出力先は datagen.yml の targets で定義(snowflake / duckdb)。
+    uv run python generate.py                  # 前回からの実経過時間で件数を算出
+    uv run python generate.py --minutes 30     # 30分経過したものとして生成(検証用)
 
-    uv run python generate.py                      # 既定ターゲット(snowflake)
-    uv run python generate.py --target duckdb      # ローカル DuckDB に出力
-    uv run python generate.py --minutes 30         # 30分経過したものとして生成(検証用)
-
+事前に Snowflake 認証の env var が必要: set -a; source .env; set +a
 源泉の追加 = datagen.yml の sources: に1ブロック足すだけ。
 """
 from __future__ import annotations
@@ -27,32 +25,7 @@ def now_tz() -> datetime:
     return datetime.now().astimezone()
 
 
-# ---------- 出力先アダプタ (DuckDB / Snowflake) ----------
-class DuckDBTarget:
-    placeholder = "?"
-    ts_type = "timestamptz"
-
-    def __init__(self, cfg):
-        import duckdb
-        self.con = duckdb.connect(cfg["database"])
-        self.schema = cfg["schema"]
-
-    def execute(self, sql, params=None):
-        self.con.execute(sql, params or [])
-
-    def executemany(self, sql, rows):
-        self.con.executemany(sql, rows)
-
-    def fetchall(self, sql, params=None):
-        return self.con.execute(sql, params or []).fetchall()
-
-    def sample_sql(self, table, col, n):
-        return f"select {col} from {table} using sample {n} rows"
-
-    def close(self):
-        self.con.close()
-
-
+# ---------- 出力先 (Snowflake) ----------
 class SnowflakeTarget:
     placeholder = "%s"
     ts_type = "timestamp_tz"
@@ -89,10 +62,6 @@ class SnowflakeTarget:
 
     def close(self):
         self.con.close()
-
-
-def make_target(target_cfg):
-    return {"duckdb": DuckDBTarget, "snowflake": SnowflakeTarget}[target_cfg["type"]](target_cfg)
 
 
 # ---------- フィールド生成レシピ ----------
@@ -181,14 +150,12 @@ def run_source(tgt, name, spec, profiles, minutes_override):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="datagen.yml")
-    ap.add_argument("--target", help="datagen.yml の targets から選択(既定: default_target)")
     ap.add_argument("--minutes", type=float, default=None, help="経過分を固定(検証用)")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(args.config))
-    target_name = args.target or cfg["default_target"]
-    tgt = make_target(cfg["targets"][target_name])
-    print(f"[datagen] target = {target_name} ({tgt.schema})")
+    tgt = SnowflakeTarget(cfg["target"])
+    print(f"[datagen] target = snowflake ({tgt.schema})")
     tgt.execute(f"create schema if not exists {tgt.schema}")
     for name, spec in cfg["sources"].items():        # 定義順に処理(ref 依存はこの順序に従う)
         run_source(tgt, name, spec, cfg["profiles"], args.minutes)

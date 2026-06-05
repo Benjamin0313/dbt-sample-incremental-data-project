@@ -1,15 +1,14 @@
 # dbt-sample-incremental-data-project
 
-「データが継続的に到着する状況」を再現するためのサンプル。
+「データが継続的に到着する状況」を Snowflake 上で再現するためのサンプル。
 
 - 源泉は **`datagen.yml` に宣言 → `generate.py` が生成**（faker でダミーデータ）
 - **dbt は変換に専念**（staging → marts）
-- 出力先は **Snowflake**(既定) / **DuckDB**(ローカル) を `--target` で切替
 - 源泉を実行のたびに増やせるので、**incremental の差分取り込み・遅延到着・CDC・freshness** を検証できる
 
 ```
 datagen.yml ──▶ generate.py ──▶ 源泉(raw_*)  ──▶ dbt(staging/marts)
- (宣言)          (faker)        Snowflake / DuckDB
+ (宣言)          (faker)            Snowflake
 ```
 
 ---
@@ -19,35 +18,25 @@ datagen.yml ──▶ generate.py ──▶ 源泉(raw_*)  ──▶ dbt(staging
 [uv](https://docs.astral.sh/uv/) が必要（未導入なら `curl -LsSf https://astral.sh/uv/install.sh | sh`）。
 
 ```bash
-uv sync     # faker / dbt-core / dbt-snowflake / dbt-duckdb を導入
+uv sync                      # 依存を導入(バージョン固定)
+
+cp .env.sample .env          # Snowflake 認証情報を記入(datum 標準のキーペア認証)
+# .env に SF_ACCOUNT / SF_USER / SF_PRIVATE_KEY_PATH を設定
 ```
+
+`.env` は `.gitignore` 済み（コミットされない）。
 
 ---
 
 ## 使い方
 
-源泉を生成 → dbt で変換、の2ステップ。
-
-### A. DuckDB（ローカル・認証不要）
+源泉を生成 → dbt で変換、の2ステップ。先に認証情報を読み込む。
 
 ```bash
-uv run python generate.py --target duckdb --minutes 30   # 源泉を生成(30分経過ぶん)
-uv run dbt build --profiles-dir . --target duckdb        # 変換
-```
+set -a; source .env; set +a                  # Snowflake 認証を環境変数に展開
 
-### B. Snowflake（社内 datum・既定ターゲット）
-
-datum 標準のキーペア認証の環境変数が必要。`.env` に書いて `source` する:
-
-```bash
-# .env (gitignore 済み)
-#   export SF_ACCOUNT=...
-#   export SF_USER=...
-#   export SF_PRIVATE_KEY_PATH=/path/to/key.p8
-set -a; source .env; set +a
-
-uv run python generate.py --minutes 30        # 源泉を Snowflake(jaffle_shop_raw)へ
-uv run dbt build --profiles-dir .             # Snowflake(jaffle_shop)へ変換
+uv run python generate.py --minutes 30       # 源泉を Snowflake(jaffle_shop_raw)へ生成
+uv run dbt build --profiles-dir .            # Snowflake(jaffle_shop)へ変換
 ```
 
 接続確認: `uv run dbt debug --profiles-dir .`
@@ -68,7 +57,6 @@ uv run dbt source freshness --profiles-dir .
 
 - `generate.py` 引数なし … 前回からの**実経過時間**で件数を算出
 - `--minutes N` … N分経過したものとして生成（待たずに検証できる）
-- `--target snowflake|duckdb` … 出力先（既定は `datagen.yml` の `default_target`）
 
 ---
 
@@ -133,6 +121,8 @@ profiles:
 
 ## モデル（dbt）
 
+`d_harato_db.jaffle_shop` スキーマに作られる。源泉は `d_harato_db.jaffle_shop_raw`。
+
 | モデル | 種別 | 内容 |
 | --- | --- | --- |
 | `stg_orders` / `stg_customers` | view | 源泉の素直な整形 |
@@ -143,28 +133,23 @@ profiles:
 
 ---
 
-## 出力先の対応（`profiles.yml` ↔ `datagen.yml`）
+## 接続・出力先（Snowflake）
 
-`--target` 名は両ファイルで揃えてある。dbt の source は `{{ target.schema }}_raw`。
+| 項目 | 値 |
+| --- | --- |
+| 認証 | キーペア（env-var: `SF_ACCOUNT` / `SF_USER` / `SF_PRIVATE_KEY_PATH`） |
+| role | `accountadmin`（専用スキーマ作成に `CREATE SCHEMA` が必要なため） |
+| database / warehouse | `d_harato_db` / `d_harato_wh` |
+| schema | モデル=`jaffle_shop` / 源泉=`jaffle_shop_raw` |
 
-| target | dbt(モデル) | 源泉(raw_*) | 認証 |
-| --- | --- | --- | --- |
-| `snowflake` | `d_harato_db.jaffle_shop` | `d_harato_db.jaffle_shop_raw` | キーペア(env-var)。role=accountadmin |
-| `duckdb` | `jaffle_shop.duckdb` / `main` | `main_raw` | 不要 |
-
-> [!NOTE]
-> Snowflake は専用スキーマ作成に `CREATE SCHEMA` 権限が要るため role=accountadmin にしている。
-> 最小権限で運用するなら既存 `public` に置く構成も可。
+接続先は `profiles.yml`（dbt）と `datagen.yml` の `target:`（源泉）で定義。
 
 ---
 
-## データ確認 / リセット
+## リセット
 
-```bash
-# DuckDB を直接クエリ(brew install duckdb)。読むだけなら -readonly
-duckdb -readonly jaffle_shop.duckdb "select * from main.customer_summary limit 5"
-
-# リセット
-rm -f jaffle_shop.duckdb                                   # DuckDB
-# Snowflake: drop schema jaffle_shop; drop schema jaffle_shop_raw;
+```sql
+-- Snowflake 側でスキーマごと削除すると初期化される
+drop schema if exists jaffle_shop;
+drop schema if exists jaffle_shop_raw;
 ```

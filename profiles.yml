@@ -1,12 +1,8 @@
 # profiles.yml — このディレクトリを --profiles-dir に指定して使う
-#   例: uv run dbt build --profiles-dir . --target snowflake
+#   例: uv run dbt build --profiles-dir .
 #
 # 出力先は社内 datum の Snowflake (datum 標準の env-var + キーペア認証)。
-# 必要な環境変数:
-#   SF_ACCOUNT           … Snowflake アカウント識別子
-#   SF_USER              … ユーザー名
-#   SF_PRIVATE_KEY_PATH  … 秘密鍵(.p8)のパス
-# ローカルで素早く試したいときは --target duckdb で DuckDB に切替可。
+# 必要な環境変数 (.env.sample 参照): SF_ACCOUNT / SF_USER / SF_PRIVATE_KEY_PATH
 jaffle_shop:
   target: snowflake
   outputs:
@@ -18,12 +14,6 @@ jaffle_shop:
       role: accountadmin
       database: d_harato_db
       warehouse: d_harato_wh
-      schema: jaffle_shop          # 源泉は jaffle_shop_raw、モデルは jaffle_shop スキーマに入る
+      schema: jaffle_shop            # 源泉は jaffle_shop_raw、モデルは jaffle_shop スキーマ
       threads: 8
       client_session_keep_alive: false
-
-    duckdb:                        # ローカル検証用フォールバック
-      type: duckdb
-      path: jaffle_shop.duckdb
-      schema: main
-      threads: 4

@@ -1,15 +1,10 @@
 [project]
 name = "jaffle-shop-datagen"
 version = "0.1.0"
-description = "源泉を宣言的ジェネレータ(datagen.yml + generate.py)で生成する jaffle_shop サンプル。dbt-core で Snowflake / DuckDB に変換。"
+description = "源泉を宣言的ジェネレータ(datagen.yml + generate.py)で生成し、dbt-core で Snowflake に変換する jaffle_shop サンプル。"
 requires-python = ">=3.11"
 dependencies = [
-    # dbt 本体とアダプタ。`uv run dbt ...` で実行する。
-    "dbt-snowflake>=1.11",
-    "dbt-duckdb>=1.9",
-    # 源泉生成エンジン
-    "faker>=40.21.0",
-    "pyyaml>=6.0.3",
-    # ローカル DuckDB を直接クエリするため
-    "duckdb==1.5.3",
+    "dbt-snowflake==1.11.5",
+    "faker==40.21.0",
+    "pyyaml==6.0.3",
 ]
