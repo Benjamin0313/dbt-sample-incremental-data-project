@@ -1,35 +1,31 @@
-# 源泉ジェネレータの宣言設定。ここに source を1ブロック足すだけで源泉が増える。
-# 実行:
-#   uv run python generate.py --daemon --interval 60   # 常駐。60秒ごとに実経過ぶんを生成
-#   uv run python generate.py                          # 単発。前回からの実経過時間で件数を算出
-#   uv run python generate.py --minutes 30             # 単発。30分経過したものとして生成(検証用)
+# 源泉の宣言。sources に1ブロック足すだけで源泉が増える。使い方は README 参照。
 
-# tick プロファイル: 「N分に1件」で指定(update_every_min を省くと更新なし)
+# 生成ペース。「N分に1件」で指定(update_every_min を省くと更新なし)
 profiles:
-  slow:   { new_every_min: 20, update_every_min: 120 }   # 20分に1新規 / 2時間に1更新
-  medium: { new_every_min: 5,  update_every_min: 30 }    # 5分に1新規 / 30分に1更新
-  fast:   { new_every_min: 0.5 }                          # 30秒に1新規(更新なし)
+  slow:   { new_every_min: 20, update_every_min: 120 }
+  medium: { new_every_min: 5,  update_every_min: 30 }
+  fast:   { new_every_min: 0.5 }
 
 sources:
   customers:
     tick: medium
-    raw_style: upsert          # PK で merge。更新された行だけ last_loaded_at が進む
+    raw_style: upsert          # PK で merge。変更行だけ last_loaded_at が進む
     primary_key: customer_id
-    seed: 50                   # 初回に投入する件数
+    seed: 50                   # 初回投入件数
     fields:
       customer_id: { gen: uuid }
       name:        { gen: faker, method: name }
       email:       { gen: faker, method: email }
       cohort:      { gen: choice, choices: [bronze, silver, gold], weights: [70, 25, 5], mutable: true }
-      created_at:  { gen: now }                 # 作成時刻。upsert でも変えない(mutable 未指定)
+      created_at:  { gen: now }
 
   orders:
     tick: fast
-    raw_style: append          # 追記のみ。既存行は不変
+    raw_style: append          # 追記のみ
     primary_key: order_id
     seed: 50
     fields:
       order_id:    { gen: uuid }
-      customer_id: { gen: ref, source: customers, field: customer_id }  # 既存顧客を参照
+      customer_id: { gen: ref, source: customers, field: customer_id }
       order_total: { gen: int, min: 3, max: 50 }
-      ordered_at:  { gen: recent, within_days: 14 }     # 直近14日に散らす(遅延到着の再現)
+      ordered_at:  { gen: recent, within_days: 14 }

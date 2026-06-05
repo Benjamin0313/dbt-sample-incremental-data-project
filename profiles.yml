@@ -1,8 +1,4 @@
-# profiles.yml — このディレクトリを --profiles-dir に指定して使う
-#   例: uv run dbt build --profiles-dir .
-#
-# 出力先は社内 datum の Snowflake (datum 標準の env-var + キーペア認証)。
-# 必要な環境変数 (.env.sample 参照): SF_ACCOUNT / SF_USER / SF_PRIVATE_KEY_PATH
+# Snowflake 接続。必要な env var は .env.sample 参照。 例: uv run dbt build --profiles-dir .
 jaffle_shop:
   target: snowflake
   outputs:
