@@ -1,10 +1,24 @@
 # 源泉ジェネレータの宣言設定。ここに source を1ブロック足すだけで源泉が増える。
-# 実行: uv run python generate.py            (実時間の経過から件数を算出)
-#       uv run python generate.py --minutes 30  (30分経過したものとして生成 = 検証用)
+# 実行: uv run python generate.py                       (= 既定ターゲット snowflake)
+#       uv run python generate.py --target duckdb        (ローカル DuckDB に出力)
+#       uv run python generate.py --minutes 30           (30分経過したものとして生成 = 検証用)
 
-# 出力先 DuckDB(dbt と同じファイル / 源泉スキーマ)
-database: jaffle_shop.duckdb
-schema: main_raw
+# 出力先。dbt の profiles.yml と source スキーマ(<dbt schema>_raw)を合わせる。
+default_target: snowflake
+targets:
+  snowflake:
+    type: snowflake
+    account_env: SF_ACCOUNT          # 認証は datum 標準のキーペア(env var)
+    user_env: SF_USER
+    private_key_env: SF_PRIVATE_KEY_PATH
+    role: sysadmin
+    warehouse: d_harato_wh
+    database: d_harato_db
+    schema: jaffle_shop_raw           # dbt schema=jaffle_shop → source は jaffle_shop_raw
+  duckdb:
+    type: duckdb
+    database: jaffle_shop.duckdb
+    schema: main_raw                  # dbt schema=main → source は main_raw
 
 # tick プロファイル: 1分あたりの新規・更新件数
 profiles:

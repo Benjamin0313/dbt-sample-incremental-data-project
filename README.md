@@ -1,9 +1,10 @@
 # 🥪 Jaffle Shop — 宣言的な源泉ジェネレータ付き
 
-_powered by Faker + DuckDB + dbt-core_
+_powered by Faker + dbt-core (Snowflake / DuckDB)_
 
-「データが継続的に到着する状況」をローカルで再現するためのサンプル。
+「データが継続的に到着する状況」を再現するためのサンプル。
 源泉は **`datagen.yml` に宣言 → `generate.py` が生成**し、**dbt は変換に専念**します。
+出力先は **Snowflake**(社内 datum、既定)と **DuckDB**(ローカル検証)を `--target` で切替。
 
 - **源泉の追加 = `datagen.yml` に数行足すだけ**（faker レシピで列を定義）
 - `raw_style: append`(追記) / `upsert`(PKでmerge、**変更行だけ `last_loaded_at` が進む**)
@@ -13,21 +14,31 @@ _powered by Faker + DuckDB + dbt-core_
 
 ## 使い方
 
-前提: [uv](https://docs.astral.sh/uv/)(未導入なら `curl -LsSf https://astral.sh/uv/install.sh | sh`)。外部DB不要、すべて `jaffle_shop.duckdb` に入ります。
+前提: [uv](https://docs.astral.sh/uv/)(未導入なら `curl -LsSf https://astral.sh/uv/install.sh | sh`)。
 
 ```bash
-uv sync                                   # 初回: faker / dbt-core / dbt-duckdb を導入
+uv sync     # 初回: faker / dbt-core / dbt-snowflake / dbt-duckdb を導入
+```
 
-# 源泉を生成 → dbt で変換
-uv run python generate.py --minutes 30    # 30分経過したものとして生成(検証用)
-uv run dbt build --profiles-dir .
+**Snowflake(既定)** — 社内 datum。datum 標準のキーペア認証 env var が必要:
 
-# もう一度回すと源泉がさらに増える(orders は追記、customers は upsert)
-uv run python generate.py --minutes 30 && uv run dbt build --profiles-dir .
+```bash
+export SF_ACCOUNT=...  SF_USER=...  SF_PRIVATE_KEY_PATH=/path/to/key.p8
+
+uv run python generate.py --minutes 30          # 源泉を Snowflake(jaffle_shop_raw)へ生成
+uv run dbt build --profiles-dir .               # Snowflake(jaffle_shop)へ変換
+```
+
+**DuckDB(ローカル検証)** — 認証不要、`jaffle_shop.duckdb` に入る:
+
+```bash
+uv run python generate.py --target duckdb --minutes 30
+uv run dbt build --profiles-dir . --target duckdb
 ```
 
 - `generate.py` 引数なし … 前回実行からの**実経過時間**で件数を算出
 - `--minutes N` … N分経過したものとして生成（待たずに検証できる）
+- `--target` … `datagen.yml` / `profiles.yml` の両方に同名ターゲット(`snowflake` / `duckdb`)を定義済み
 
 ## 源泉を追加する(`datagen.yml`)
 
@@ -96,13 +107,27 @@ profiles:
 - **append**(orders): 新規行に付与、既存は不変
 - **upsert**(customers): **新規行と、`mutable` な列が変わった行だけ**更新 → 本来の「その行が最後に変わった時刻」になる
 
-## データの確認 / リセット
+## 出力先の対応(profiles.yml ↔ datagen.yml)
+
+`--target` 名は両ファイルで揃えてあります。dbt の source スキーマは `<schema>_raw` なので、
+ジェネレータの書き込み先スキーマもそれに合わせています。
+
+| target | profiles.yml (dbt) | datagen.yml (源泉) |
+| --- | --- | --- |
+| `snowflake` | `d_harato_db` / schema `jaffle_shop` | schema `jaffle_shop_raw` |
+| `duckdb` | `jaffle_shop.duckdb` / schema `main` | schema `main_raw` |
+
+Snowflake 認証は env-var + キーペア(`SF_ACCOUNT` / `SF_USER` / `SF_PRIVATE_KEY_PATH`)。
+接続確認: `uv run dbt debug --profiles-dir .`(既定 snowflake) / `--target duckdb`。
+
+## データの確認 / リセット(DuckDB)
 
 ```bash
 # 直接クエリ(brew install duckdb)。読むだけなら -readonly
 duckdb -readonly jaffle_shop.duckdb "select * from main.customer_summary limit 5"
-duckdb -readonly jaffle_shop.duckdb "select count(*) from main.orders_inc"
 
-# リセット(源泉・モデルを全消去。次回 generate.py で seed から作り直し)
+# リセット(次回 generate.py で seed から作り直し)
 rm -f jaffle_shop.duckdb
 ```
+
+Snowflake 側のリセットは `drop schema jaffle_shop_raw; drop schema jaffle_shop;`(または `--full-refresh`)。
