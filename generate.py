@@ -96,6 +96,11 @@ def ensure_table(tgt, name, fields):
     tgt.execute(f"create table if not exists {tgt.schema}.raw_{name} ({cols}, last_loaded_at {tgt.ts_type})")
 
 
+def _per_min(every_min):
+    """「N分に1件」→ 1分あたりの件数。None/0 は 0(その種別なし)。"""
+    return (1.0 / every_min) if every_min else 0.0
+
+
 def ensure_state(tgt):
     """実行状態テーブル(_datagen_state)を用意。経過時間と端数(acc_*)を源泉ごとに持つ。"""
     s = tgt.schema
@@ -120,8 +125,9 @@ def ticks(tgt, source, profile, minutes_override, seed):
         return seed, 0
     last_tick_at, acc_new, acc_upd = rows[0]
     elapsed_min = minutes_override if minutes_override is not None else (now - last_tick_at).total_seconds() / 60.0
-    acc_new = (acc_new or 0) + profile["new_per_min"] * elapsed_min
-    acc_upd = (acc_upd or 0) + profile["update_per_min"] * elapsed_min
+    # profile は「N分に1件」(new_every_min / update_every_min)。省略/0 はその種別なし。
+    acc_new = (acc_new or 0) + _per_min(profile.get("new_every_min")) * elapsed_min
+    acc_upd = (acc_upd or 0) + _per_min(profile.get("update_every_min")) * elapsed_min
     n_new, n_upd = int(acc_new), int(acc_upd)      # 整数部だけ生成
     tgt.execute(
         f"update {tgt.schema}._datagen_state set last_tick_at={ph}, acc_new={ph}, acc_upd={ph} where source={ph}",

@@ -15,11 +15,11 @@ target:
   database: d_harato_db
   schema: jaffle_shop_raw             # dbt schema=jaffle_shop → source は jaffle_shop_raw
 
-# tick プロファイル: 1分あたりの新規・更新件数
+# tick プロファイル: 「N分に1件」で指定(update_every_min を省くと更新なし)
 profiles:
-  slow:   { new_per_min: 0.05, update_per_min: 0.01 }
-  medium: { new_per_min: 0.2,  update_per_min: 0.0333 }   # 5分に1新規 / 30分に1更新
-  fast:   { new_per_min: 1.7,  update_per_min: 0.0 }       # 30分で約50件
+  slow:   { new_every_min: 20, update_every_min: 120 }   # 20分に1新規 / 2時間に1更新
+  medium: { new_every_min: 5,  update_every_min: 30 }    # 5分に1新規 / 30分に1更新
+  fast:   { new_every_min: 0.5 }                          # 30秒に1新規(更新なし)
 
 sources:
   customers:
