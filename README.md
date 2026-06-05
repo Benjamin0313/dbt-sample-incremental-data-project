@@ -211,16 +211,16 @@ sources:
 
 ### tick プロファイル
 
-`profiles:` に **「N分に1件」** で生成ペースを定義し、各源泉が `tick:` で参照する。
-`update_every_min` を省くと更新なし（append 源泉向け）。
+`profiles:` に **「1分にN件」** で生成ペースを定義し、各源泉が `tick:` で参照する。
+`update_per_min` を省くと更新なし（append 源泉向け）。
 
 ```yaml
 profiles:
-  medium: { new_every_min: 5,  update_every_min: 30 }   # 5分に1新規 / 30分に1更新
-  fast:   { new_every_min: 0.5 }                         # 30秒に1新規(更新なし)
+  medium: { new_per_min: 0.2, update_per_min: 0.0333 }   # 5分に1新規 / 30分に1更新
+  fast:   { new_per_min: 2 }                              # 30秒に1新規(更新なし)
 ```
 
-> 端数は `_datagen_state` に繰り越すので、`new_every_min: 5` は短間隔で回しても平均「5分に1件」になる。
+> 端数は `_datagen_state` に繰り越すので、`new_per_min: 0.2` でも短間隔で回せば平均「5分に1件」になる。
 
 ### raw_style
 
