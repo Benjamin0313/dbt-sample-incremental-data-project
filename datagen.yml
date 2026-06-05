@@ -1,10 +1,11 @@
 # 源泉の宣言。sources に1ブロック足すだけで源泉が増える。使い方は README 参照。
 
 # 生成ペース。「1分にN件」で指定(update_per_min を省くと更新なし)
+# 例: 30秒に1件 = 1分に2件 = 2 / 30秒に10件 = 1分に20件 = 20
 profiles:
-  slow:   { new_per_min: 0.05, update_per_min: 0.01 }     # 新規20分に1 / 更新100分に1
-  medium: { new_per_min: 0.2,  update_per_min: 0.0333 }   # 新規5分に1  / 更新30分に1
-  fast:   { new_per_min: 2 }                               # 新規30秒に1
+  slow:   { new_per_min: 0.05, update_per_min: 0.01 }     # 新規: 20分に1件 / 更新: 100分に1件
+  medium: { new_per_min: 0.2,  update_per_min: 0.0333 }   # 新規: 5分に1件  / 更新: 30分に1件
+  fast:   { new_per_min: 2 }                               # 新規: 30秒に1件(=1分に2件)
 
 sources:
   customers:

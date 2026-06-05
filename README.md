@@ -216,9 +216,17 @@ sources:
 
 ```yaml
 profiles:
-  medium: { new_per_min: 0.2, update_per_min: 0.0333 }   # 5分に1新規 / 30分に1更新
-  fast:   { new_per_min: 2 }                              # 30秒に1新規(更新なし)
+  medium: { new_per_min: 0.2, update_per_min: 0.0333 }   # 5分に1件 / 30分に1更新
+  fast:   { new_per_min: 2 }                              # 30秒に1件(=1分に2件、更新なし)
 ```
+
+`new_per_min` は**1分あたりの件数**。「X秒ごとにN件」は **`N ÷ X × 60`**:
+
+| 欲しいペース | new_per_min |
+| --- | --- |
+| 30秒に1件 | `1 ÷ 30 × 60 = 2` |
+| 30秒に10件 | `10 ÷ 30 × 60 = 20` |
+| 5分に1件 | `1 ÷ 300 × 60 = 0.2` |
 
 > 端数は `_datagen_state` に繰り越すので、`new_per_min: 0.2` でも短間隔で回せば平均「5分に1件」になる。
 
