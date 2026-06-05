@@ -189,7 +189,8 @@ def run_once(cfg, minutes_override):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="datagen.yml")
-    ap.add_argument("--minutes", type=float, default=None, help="経過分を固定(単発実行・検証用)")
+    ap.add_argument("--minutes", type=float, default=None,
+                    help="経過分を固定。--daemon と併用すると 1 tick ごとにこの分数ぶん生成(早送り)")
     ap.add_argument("--daemon", action="store_true", help="一定間隔で生成し続ける(裏で常駐)")
     ap.add_argument("--interval", type=float, default=60.0, help="--daemon の生成間隔(秒、既定60)")
     args = ap.parse_args()
@@ -200,10 +201,12 @@ def main():
         run_once(cfg, args.minutes)
         return
 
-    print(f"[datagen] daemon 開始: {args.interval:.0f}秒ごとに生成 (Ctrl+C で停止)")
-    while True:                                      # 常駐: 実経過時間ぶんを毎回生成
+    # --minutes 指定時は各 tick でその分数ぶん(早送り)、未指定なら実経過時間ぶん
+    pace = f"{args.minutes:.0f}分ぶん/tick" if args.minutes is not None else "実経過時間ぶん"
+    print(f"[datagen] daemon 開始: {args.interval:.0f}秒ごとに{pace}を生成 (Ctrl+C で停止)")
+    while True:
         try:
-            run_once(cfg, None)
+            run_once(cfg, args.minutes)
         except KeyboardInterrupt:
             print("\n[datagen] 停止しました")
             break
