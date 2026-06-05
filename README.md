@@ -11,63 +11,134 @@ datagen.yml ──▶ generate.py ──▶ 源泉(raw_*)  ──▶ dbt(staging
  (宣言)          (faker)            Snowflake
 ```
 
----
+源泉(raw)とモデルは Snowflake の `d_harato_db` に入る:
 
-## セットアップ
-
-[uv](https://docs.astral.sh/uv/) が必要（未導入なら `curl -LsSf https://astral.sh/uv/install.sh | sh`）。
-
-```bash
-uv sync                      # 依存を導入(バージョン固定)
-
-cp .env.sample .env          # Snowflake 認証情報を記入(datum 標準のキーペア認証)
-# .env に SF_ACCOUNT / SF_USER / SF_PRIVATE_KEY_PATH を設定
-```
-
-`.env` は `.gitignore` 済み（コミットされない）。
+| 種類 | 場所 |
+| --- | --- |
+| 源泉 | `d_harato_db.jaffle_shop_raw.raw_customers` / `raw_orders` |
+| モデル | `d_harato_db.jaffle_shop.{stg_*, customer_summary, orders_inc}` |
 
 ---
 
-## 使い方
+## 1. 事前準備
 
-源泉を生成 → dbt で変換、の2ステップ。先に認証情報を読み込む。
+- **uv**（未導入なら `curl -LsSf https://astral.sh/uv/install.sh | sh`）
+- **Snowflake のキーペア認証**（datum 標準）。秘密鍵 `.p8` ファイルと、Snowflake 上の対応ユーザー
+  - 接続情報3つ: アカウント識別子・ユーザー・秘密鍵パス
 
 ```bash
-set -a; source .env; set +a                  # Snowflake 認証を環境変数に展開
-
-uv run python generate.py --minutes 30       # 源泉を Snowflake(jaffle_shop_raw)へ生成
-uv run dbt build --profiles-dir .            # Snowflake(jaffle_shop)へ変換
+uv sync                  # 依存(dbt-snowflake / faker / pyyaml)をバージョン固定で導入
 ```
 
-接続確認: `uv run dbt debug --profiles-dir .`
+---
 
-### よく使う操作
+## 2. 接続情報の設定（`.env`）
+
+テンプレートをコピーして値を埋める:
 
 ```bash
-# 実行を繰り返すたびに源泉が増える(orders=追記 / customers=upsert)
+cp .env.sample .env
+```
+
+`.env` の中身（自分の値に置き換える）:
+
+```bash
+export SF_ACCOUNT=ar29333.ap-northeast-1.aws        # Snowflake アカウント識別子
+export SF_USER=you@datumstudio.jp                   # ユーザー
+export SF_PRIVATE_KEY_PATH=/Users/you/.ssh/key.p8   # 秘密鍵(.p8)のパス
+```
+
+> `.env` は `.gitignore` 済み（コミットされない）。チームで共有するのは `.env.sample` だけ。
+
+設定したら、毎回シェルで読み込んでから dbt / generate.py を使う:
+
+```bash
+set -a; source .env; set +a
+```
+
+接続確認:
+
+```bash
+uv run dbt debug --profiles-dir .
+# → "Connection test: OK" / "All checks passed!" が出れば成功
+```
+
+---
+
+## 3. 使う（源泉を生成 → dbt で変換）
+
+基本は **2コマンド**。`generate.py` で源泉を増やし、`dbt build` で変換する。
+
+```bash
+set -a; source .env; set +a                  # ← セッションごとに1回でOK
+
+# ① 源泉を生成(初回は seed=50件ずつ。raw_customers / raw_orders ができる)
+uv run python generate.py --minutes 30
+# [datagen] target = snowflake (jaffle_shop_raw)
+# [datagen] raw_customers: +50 new, 0 updated  (total 50)
+# [datagen] raw_orders:    +50 new, 0 updated  (total 50)
+
+# ② dbt で変換(staging → marts)
+uv run dbt build --profiles-dir .
+# → Done. PASS=12 ...
+```
+
+これで `jaffle_shop` スキーマに `customer_summary`(table) と `orders_inc`(incremental) ができる。
+
+### 「データが増え続ける」を再現する
+
+①②を繰り返すたびに源泉が増える（**注文=追記 / 顧客=upsert**）。`orders_inc` は新着だけ取り込む。
+
+```bash
 uv run python generate.py --minutes 30 && uv run dbt build --profiles-dir .
+```
 
-# incremental だけ動かす
-uv run dbt build --select orders_inc --profiles-dir .
-uv run dbt build --select orders_inc --full-refresh --profiles-dir .
+- `--minutes N` … 「N分経過した」とみなして件数を決める（待たずに増やせる。検証向き）
+- 引数なし `generate.py` … 前回実行からの**実際の経過時間**で件数を決める（cron や [/loop] で定期実行する用）
 
-# source freshness
+### incremental だけ試す
+
+```bash
+uv run dbt build --select orders_inc --profiles-dir .                 # 新着だけ追記
+uv run dbt build --select orders_inc --full-refresh --profiles-dir .  # 全件作り直し
+```
+
+### freshness（最終到着からの経過）
+
+```bash
 uv run dbt source freshness --profiles-dir .
 ```
 
-- `generate.py` 引数なし … 前回からの**実経過時間**で件数を算出
-- `--minutes N` … N分経過したものとして生成（待たずに検証できる）
+---
+
+## 4. 結果を確認する
+
+Snowflake の Web UI / snowsql 等で確認:
+
+```sql
+use database d_harato_db;
+
+-- 源泉とモデルの件数
+select count(*) from jaffle_shop_raw.raw_orders;
+select count(*) from jaffle_shop.orders_inc;          -- raw_orders と同じ件数に追いつく
+select * from jaffle_shop.customer_summary limit 10;  -- 顧客ごとの集計(cohort 付き)
+
+-- CDC の確認: 直近に変わった顧客だけ last_loaded_at が新しい
+select date_trunc('second', last_loaded_at) as loaded, count(*)
+from jaffle_shop_raw.raw_customers
+group by 1 order by 1 desc;
+```
 
 ---
 
-## 源泉を追加する（`datagen.yml`）
+## 5. 源泉を追加する（`datagen.yml`）
 
-`sources:` に1ブロック足すだけ。
+`sources:` に1ブロック足すだけ。faker レシピで列を定義する。
 
 ```yaml
 sources:
   customers:
-    tick: medium
+    tick: medium                 # 増えるペース(下の profiles を参照)
     raw_style: upsert            # PK で merge。変更行だけ last_loaded_at が進む
     primary_key: customer_id
     seed: 50                     # 初回に投入する件数
@@ -117,11 +188,11 @@ profiles:
 - **append** … 追記のみ。既存行は不変（注文など）
 - **upsert** … PK で merge。`mutable: true` の列が変わった行**だけ** `last_loaded_at` を更新（CDC）
 
+新しい源泉を足したら、対応する dbt モデル（`models/`）を書けば変換できる。
+
 ---
 
 ## モデル（dbt）
-
-`d_harato_db.jaffle_shop` スキーマに作られる。源泉は `d_harato_db.jaffle_shop_raw`。
 
 | モデル | 種別 | 内容 |
 | --- | --- | --- |
@@ -133,7 +204,7 @@ profiles:
 
 ---
 
-## 接続・出力先（Snowflake）
+## 接続先（Snowflake）
 
 | 項目 | 値 |
 | --- | --- |
@@ -142,14 +213,26 @@ profiles:
 | database / warehouse | `d_harato_db` / `d_harato_wh` |
 | schema | モデル=`jaffle_shop` / 源泉=`jaffle_shop_raw` |
 
-接続先は `profiles.yml`（dbt）と `datagen.yml` の `target:`（源泉）で定義。
+接続先は `profiles.yml`（dbt）と `datagen.yml` の `target:`（源泉）で定義。別の DB/WH/role に変えるときは両方を直す。
 
 ---
 
 ## リセット
 
 ```sql
--- Snowflake 側でスキーマごと削除すると初期化される
+-- Snowflake 側でスキーマごと削除すると初期化される(次回 generate.py で seed から)
 drop schema if exists jaffle_shop;
 drop schema if exists jaffle_shop_raw;
 ```
+
+---
+
+## 困ったとき
+
+| 症状 | 原因 / 対処 |
+| --- | --- |
+| `Env var required but not provided: 'SF_ACCOUNT'` | `set -a; source .env; set +a` を実行していない |
+| `Insufficient privileges ... CREATE SCHEMA` | role に作成権限がない。`accountadmin` を使うか、既存スキーマに変更 |
+| `250001 / JWT token is invalid` | `SF_USER` と `.p8` 鍵の対応が違う／鍵が古い。鍵と公開鍵の登録を確認 |
+| `Object 'JAFFLE_SHOP_RAW.RAW_*' does not exist` | 先に `generate.py` を流していない。①→② の順で実行 |
+| dbt が source を見つけない | `generate.py` の `target.schema`(`jaffle_shop_raw`) と dbt の `{{ target.schema }}_raw` がズレている |
