@@ -15,7 +15,7 @@ jaffle_shop:
       account: "{{ env_var('SF_ACCOUNT') }}"
       user: "{{ env_var('SF_USER') }}"
       private_key_path: "{{ env_var('SF_PRIVATE_KEY_PATH') }}"
-      role: sysadmin
+      role: accountadmin
       database: d_harato_db
       warehouse: d_harato_wh
       schema: jaffle_shop          # 源泉は jaffle_shop_raw、モデルは jaffle_shop スキーマに入る

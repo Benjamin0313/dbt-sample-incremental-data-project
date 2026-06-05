@@ -11,7 +11,7 @@ targets:
     account_env: SF_ACCOUNT          # 認証は datum 標準のキーペア(env var)
     user_env: SF_USER
     private_key_env: SF_PRIVATE_KEY_PATH
-    role: sysadmin
+    role: accountadmin
     warehouse: d_harato_wh
     database: d_harato_db
     schema: jaffle_shop_raw           # dbt schema=jaffle_shop → source は jaffle_shop_raw

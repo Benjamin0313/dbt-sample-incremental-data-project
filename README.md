@@ -20,14 +20,20 @@ _powered by Faker + dbt-core (Snowflake / DuckDB)_
 uv sync     # 初回: faker / dbt-core / dbt-snowflake / dbt-duckdb を導入
 ```
 
-**Snowflake(既定)** — 社内 datum。datum 標準のキーペア認証 env var が必要:
+**Snowflake(既定)** — 社内 datum。datum 標準のキーペア認証 env var が必要(`.env` に書いて `source` でも可):
 
 ```bash
 export SF_ACCOUNT=...  SF_USER=...  SF_PRIVATE_KEY_PATH=/path/to/key.p8
+# または: set -a; source .env; set +a   (.env は gitignore 済み)
 
 uv run python generate.py --minutes 30          # 源泉を Snowflake(jaffle_shop_raw)へ生成
 uv run dbt build --profiles-dir .               # Snowflake(jaffle_shop)へ変換
 ```
+
+> [!NOTE]
+> 専用スキーマ(`jaffle_shop` / `jaffle_shop_raw`)を作るため、ロールに `CREATE SCHEMA` 権限が必要です
+> (本サンプルは `accountadmin`)。最小権限で運用するなら、既存 `public` スキーマに置く(source を
+> `{{ target.schema }}` 参照に変更)構成も可能です。
 
 **DuckDB(ローカル検証)** — 認証不要、`jaffle_shop.duckdb` に入る:
 
