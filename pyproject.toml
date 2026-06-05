@@ -8,4 +8,6 @@ dependencies = [
     "dbt-duckdb>=1.9",
     # 源泉(jaffle_shop.duckdb)を直接クエリするための DuckDB Python ライブラリ。
     "duckdb==1.5.3",
+    "faker>=40.21.0",
+    "pyyaml>=6.0.3",
 ]

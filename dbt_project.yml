@@ -3,16 +3,12 @@ name: jaffle_shop
 profile: jaffle_shop
 
 model-paths: ["models"]
-macro-paths: ["macros"]
 clean-targets:
   - "target"
   - "dbt_packages"
 
-# 源泉(raw)は CSV シードではなく datagen マクロが生成する。
-# dbt run / dbt build のたびに on-run-start でトランザクションが約50件増える。
-# 件数を変えたいときは generate_raw_data(n_orders=...) を調整。
-on-run-start:
-  - "{{ generate_raw_data(n_orders=50) }}"
+# 源泉は generate.py(datagen.yml)が生成する。dbt は変換のみ。
+#   uv run python generate.py && uv run dbt build
 
 models:
   jaffle_shop:

@@ -23,6 +23,7 @@ order_summary as (
 select
     customers.customer_id,
     customers.customer_name,
+    customers.cohort,
     coalesce(order_summary.count_orders, 0) as count_orders,
     coalesce(order_summary.total_spend, 0) as total_spend,
     order_summary.first_order_date,

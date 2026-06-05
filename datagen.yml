@@ -1,0 +1,37 @@
+# 源泉ジェネレータの宣言設定。ここに source を1ブロック足すだけで源泉が増える。
+# 実行: uv run python generate.py            (実時間の経過から件数を算出)
+#       uv run python generate.py --minutes 30  (30分経過したものとして生成 = 検証用)
+
+# 出力先 DuckDB(dbt と同じファイル / 源泉スキーマ)
+database: jaffle_shop.duckdb
+schema: main_raw
+
+# tick プロファイル: 1分あたりの新規・更新件数
+profiles:
+  slow:   { new_per_min: 0.05, update_per_min: 0.01 }
+  medium: { new_per_min: 0.2,  update_per_min: 0.0333 }   # 5分に1新規 / 30分に1更新
+  fast:   { new_per_min: 1.7,  update_per_min: 0.0 }       # 30分で約50件
+
+sources:
+  customers:
+    tick: medium
+    raw_style: upsert          # PK で merge。更新された行だけ last_loaded_at が進む
+    primary_key: customer_id
+    seed: 50                   # 初回(状態なし)に投入する件数
+    fields:
+      customer_id: { gen: uuid }
+      name:        { gen: faker, method: name }
+      email:       { gen: faker, method: email }
+      cohort:      { gen: choice, choices: [bronze, silver, gold], weights: [70, 25, 5], mutable: true }
+      created_at:  { gen: now }                 # 作成時刻。upsert でも変えない(mutable 未指定)
+
+  orders:
+    tick: fast
+    raw_style: append          # 追記のみ。既存行は不変
+    primary_key: order_id
+    seed: 50
+    fields:
+      order_id:    { gen: uuid }
+      customer_id: { gen: ref, source: customers, field: customer_id }  # 既存顧客を参照
+      order_total: { gen: int, min: 3, max: 50 }
+      ordered_at:  { gen: recent, within_days: 14 }     # 直近14日に散らす(遅延到着の再現)

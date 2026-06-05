@@ -5,10 +5,10 @@ source as (
 )
 
 select
-    id as order_id,
-    customer as customer_id,
+    order_id,
+    customer_id,
     cast(ordered_at as date) as order_date,
     ordered_at,
-    order_total / 100.0 as order_total,
+    order_total,
     last_loaded_at
 from source

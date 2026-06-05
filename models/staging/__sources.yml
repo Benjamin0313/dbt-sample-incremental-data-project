@@ -3,12 +3,12 @@ version: 2
 sources:
   - name: ecom
     schema: "{{ target.schema }}_raw"
-    description: datagen マクロが生成・追記する源泉。全テーブルに last_loaded_at(取込時刻)を持つ。
+    description: generate.py(datagen.yml)が生成する源泉。全テーブルに last_loaded_at(取込時刻)を持つ。
     tables:
       - name: raw_customers
-        description: 顧客マスター。
+        description: 顧客マスター(upsert)。更新された行だけ last_loaded_at が進む。
       - name: raw_orders
-        description: 注文。1実行あたり約50件追記されるトランザクション。
+        description: 注文(append)。新着のみ追記。
         loaded_at_field: last_loaded_at
         freshness:
           warn_after: { count: 24, period: hour }

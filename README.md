@@ -1,91 +1,108 @@
-# 🥪 Jaffle Shop — マクロ生成源泉版
+# 🥪 Jaffle Shop — 宣言的な源泉ジェネレータ付き
 
-_powered by dbt-core + dbt-duckdb_
+_powered by Faker + DuckDB + dbt-core_
 
-通常の jaffle_shop サンプルは源泉が **CSV シード**なので、「データが継続的に到着する状況」を再現できません。
-このプロジェクトは源泉を **datagen マクロ**に置き換え、**dbt を実行するたびに**
-**注文が約50件・顧客が2人ずつ増える**源泉を持ちます。
+「データが継続的に到着する状況」をローカルで再現するためのサンプル。
+源泉は **`datagen.yml` に宣言 → `generate.py` が生成**し、**dbt は変換に専念**します。
 
-これにより、source freshness・incremental の差分取り込み・遅延到着など、
-**データ到着まわりの挙動**をローカルだけで検証できます。
+- **源泉の追加 = `datagen.yml` に数行足すだけ**（faker レシピで列を定義）
+- `raw_style: append`(追記) / `upsert`(PKでmerge、**変更行だけ `last_loaded_at` が進む**)
+- `tick` プロファイルで「実時間あたり何件」を制御（cron/`/loop`/手動どれでも）
 
-生成は `on-run-start` フック(`dbt_project.yml`)で **`dbt run` / `dbt build` のたびに自動実行**されます。
-全源泉は取込時刻 `last_loaded_at` を持ち、実行のたびに更新されます。
+これで source freshness・incremental の差分取り込み・遅延到着・CDC を検証できます。
 
-## 源泉と更新タイミング
+## 使い方
 
-源泉は DuckDB の `main_raw` スキーマに入り、実行のたびに次が必ず変わります。
+前提: [uv](https://docs.astral.sh/uv/)(未導入なら `curl -LsSf https://astral.sh/uv/install.sh | sh`)。外部DB不要、すべて `jaffle_shop.duckdb` に入ります。
 
-| 源泉 | 区分 | 毎回の変化 |
+```bash
+uv sync                                   # 初回: faker / dbt-core / dbt-duckdb を導入
+
+# 源泉を生成 → dbt で変換
+uv run python generate.py --minutes 30    # 30分経過したものとして生成(検証用)
+uv run dbt build --profiles-dir .
+
+# もう一度回すと源泉がさらに増える(orders は追記、customers は upsert)
+uv run python generate.py --minutes 30 && uv run dbt build --profiles-dir .
+```
+
+- `generate.py` 引数なし … 前回実行からの**実経過時間**で件数を算出
+- `--minutes N` … N分経過したものとして生成（待たずに検証できる）
+
+## 源泉を追加する(`datagen.yml`)
+
+`sources:` に1ブロック足すだけ。例(既存の定義):
+
+```yaml
+sources:
+  customers:
+    tick: medium
+    raw_style: upsert            # PK で merge。変更行だけ last_loaded_at が進む
+    primary_key: customer_id
+    seed: 50                     # 初回に投入する件数
+    fields:
+      customer_id: { gen: uuid }
+      name:        { gen: faker, method: name }
+      email:       { gen: faker, method: email }
+      cohort:      { gen: choice, choices: [bronze, silver, gold], weights: [70, 25, 5], mutable: true }
+      created_at:  { gen: now }
+
+  orders:
+    tick: fast
+    raw_style: append            # 追記のみ。既存行は不変
+    primary_key: order_id
+    seed: 50
+    fields:
+      order_id:    { gen: uuid }
+      customer_id: { gen: ref, source: customers, field: customer_id }  # 既存顧客を参照
+      order_total: { gen: int, min: 3, max: 50 }
+      ordered_at:  { gen: recent, within_days: 14 }
+```
+
+### フィールドのレシピ(`gen`)
+
+| gen | 説明 | 例 |
 | --- | --- | --- |
-| `raw_orders` | トランザクション | 注文を約50件追記 |
-| `raw_customers` | マスター(`master_data/customers.csv` が正) | 顧客を2人追加 → CSV へ書き戻し |
+| `uuid` | UUID 文字列 | `{ gen: uuid }` |
+| `faker` | faker の任意メソッド | `{ gen: faker, method: name }` |
+| `choice` | 重み付き選択。`mutable: true` で upsert 更新対象に | `{ gen: choice, choices: [a,b], weights: [8,2] }` |
+| `int` | 整数 | `{ gen: int, min: 3, max: 50 }` |
+| `now` | 現在時刻 | `{ gen: now }` |
+| `recent` | 直近 N 日に散らす(遅延到着の再現) | `{ gen: recent, within_days: 14 }` |
+| `ref` | 他源泉の既存値を参照(FK整合) | `{ gen: ref, source: customers, field: customer_id }` |
 
-マスターは `master_data/customers.csv` を「正」とします。実行のたびに **CSV → DB へロード**するので、
-**CSV を手で編集して行を足す/名前を変えると次回実行で反映**されます。マクロが顧客を追加したら **DB → CSV へ書き戻し**されます。
+### tick プロファイル
 
-## モデル(最小構成)
+`profiles:` に「1分あたりの新規/更新件数」を定義し、各源泉が `tick:` で参照します。
+
+```yaml
+profiles:
+  medium: { new_per_min: 0.2, update_per_min: 0.0333 }   # 5分に1新規 / 30分に1更新
+  fast:   { new_per_min: 1.7, update_per_min: 0.0 }       # 30分で約50件
+```
+
+## モデル(dbt、最小構成)
 
 | モデル | 種別 | 内容 |
 | --- | --- | --- |
 | `stg_orders` / `stg_customers` | view | 源泉の素直な整形 |
-| `customer_summary` | table | 顧客ごとの注文数・売上(毎回フルリフレッシュ) |
+| `customer_summary` | table | 顧客ごとの注文数・売上・cohort(毎回フルリフレッシュ) |
 | `orders_inc` | incremental | 新着注文だけ追記(高水位マーク `last_loaded_at`) |
 
-## 使い方
+## last_loaded_at(取込時刻)
 
-前提:
+全源泉が `last_loaded_at` を持ちます。
 
-- [uv](https://docs.astral.sh/uv/)(未導入なら `curl -LsSf https://astral.sh/uv/install.sh | sh`)。dbt は `uv run dbt` で動かします(dbt-core + dbt-duckdb)。
-- 外部DBは不要で、すべて `jaffle_shop.duckdb` に入ります。直接クエリ用に duckdb CLI(`brew install duckdb`)があると便利。
+- **append**(orders): 新規行に付与、既存は不変
+- **upsert**(customers): **新規行と、`mutable` な列が変わった行だけ**更新 → 本来の「その行が最後に変わった時刻」になる
 
-```bash
-uv sync                                  # 初回: dbt-core / dbt-duckdb を導入
-uv run dbt build --profiles-dir .        # 注文+50 / 顧客+2 → staging/marts。もう一度叩くとさらに増える
-```
-
-源泉だけを手動で増やす:
+## データの確認 / リセット
 
 ```bash
-uv run dbt run-operation generate_raw_data --profiles-dir .                      # +50注文 / +2顧客
-uv run dbt run-operation generate_raw_data --args '{n_orders: 120}' --profiles-dir .  # 注文件数を指定
-```
-
-到着検証(incremental):
-
-```bash
-uv run dbt build --select orders_inc --profiles-dir .                  # 2回目以降は直近バッチ分だけ追加
-uv run dbt build --select orders_inc --full-refresh --profiles-dir .   # 全件作り直し
-```
-
-source freshness(`last_loaded_at` ベース):
-
-```bash
-uv run dbt source freshness --profiles-dir .
-```
-
-リセット:
-
-```bash
-rm -f jaffle_shop.duckdb          # DBを消去。次回ビルドでマスターは現在の customers.csv から作り直し
-git checkout master_data          # 顧客CSVも初期状態(コミット時点)に戻したいとき
-```
-
-## データの確認(select)
-
-duckdb CLI で `jaffle_shop.duckdb` に直接 SQL を投げます。源泉は `main_raw`、モデルは `main` スキーマに入ります。
-
-```bash
-# 読むだけなら -readonly を付ける(源泉は増えない)
-duckdb -readonly jaffle_shop.duckdb "select * from main_raw._gen_state order by run_number"
-duckdb -readonly jaffle_shop.duckdb "select count(*) from main.orders_inc"
+# 直接クエリ(brew install duckdb)。読むだけなら -readonly
 duckdb -readonly jaffle_shop.duckdb "select * from main.customer_summary limit 5"
+duckdb -readonly jaffle_shop.duckdb "select count(*) from main.orders_inc"
 
-# 対話シェル
-duckdb -readonly jaffle_shop.duckdb
+# リセット(源泉・モデルを全消去。次回 generate.py で seed から作り直し)
+rm -f jaffle_shop.duckdb
 ```
-
-> [!NOTE]
-> DuckDB の単一ファイルは「書き込み接続1つ」または「読み取り接続のみ複数」のどちらか。
-> `dbt` 実行中や RW シェルを開いたままだとロック競合になるので、読むだけなら `-readonly` を使い、
-> dbt と同時には開かないこと。
