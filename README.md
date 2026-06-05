@@ -94,7 +94,23 @@ uv run python generate.py --minutes 30 && uv run dbt build --profiles-dir .
 ```
 
 - `--minutes N` … 「N分経過した」とみなして件数を決める（待たずに増やせる。検証向き）
-- 引数なし `generate.py` … 前回実行からの**実際の経過時間**で件数を決める（cron や [/loop] で定期実行する用）
+- 引数なし `generate.py` … 前回実行からの**実際の経過時間**で件数を決める
+
+### 裏で定期的に流し続ける（デーモン）
+
+`datagen.yml` の定義どおりに、**dbt とは無関係に Snowflake へ自動で insert し続ける**:
+
+```bash
+set -a; source .env; set +a
+uv run python generate.py --daemon --interval 60        # 60秒ごとに実経過ぶんを生成(Ctrl+C で停止)
+
+# 端末を閉じても動かし続ける(ログはファイルへ)
+nohup uv run python generate.py --daemon --interval 60 > datagen.log 2>&1 &
+```
+
+- 件数は `tick` プロファイルのレート（例 customers=5分に1人 / 30分に1更新、orders≈30分で50件）で決まる
+- レートの端数は `_datagen_state` に繰り越すので、短間隔で回しても「5分に1人」を正しく刻む
+- 取り込み側は別途 `dbt build`（cron や [/loop] で回す）。生成と変換は独立
 
 ### incremental だけ試す
 

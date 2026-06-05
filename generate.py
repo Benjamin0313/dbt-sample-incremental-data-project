@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import os
 import random
+import time
 import uuid
 from datetime import datetime, timedelta
 
@@ -95,17 +96,37 @@ def ensure_table(tgt, name, fields):
     tgt.execute(f"create table if not exists {tgt.schema}.raw_{name} ({cols}, last_loaded_at {tgt.ts_type})")
 
 
+def ensure_state(tgt):
+    """実行状態テーブル(_datagen_state)を用意。経過時間と端数(acc_*)を源泉ごとに持つ。"""
+    s = tgt.schema
+    tgt.execute(f"create table if not exists {s}._datagen_state "
+                f"(source varchar, last_tick_at {tgt.ts_type}, acc_new double, acc_upd double)")
+    tgt.execute(f"alter table {s}._datagen_state add column if not exists acc_new double")
+    tgt.execute(f"alter table {s}._datagen_state add column if not exists acc_upd double")
+
+
 def ticks(tgt, source, profile, minutes_override, seed):
-    """このソースの (new件数, update件数) を経過時間から算出し、state を進める。"""
-    tgt.execute(f"create table if not exists {tgt.schema}._datagen_state (source varchar, last_tick_at {tgt.ts_type})")
-    rows = tgt.fetchall(f"select last_tick_at from {tgt.schema}._datagen_state where source = {tgt.placeholder}", [source])
+    """このソースの (new件数, update件数) を経過時間×レートから算出し、端数を繰り越す。
+
+    短間隔のデーモンでも「5分に1人」等を正しく実現するため、レート×経過分を acc_* に
+    積み増し、整数部だけを今回の件数にして残りを次回へ繰り越す(round で 0 に消えない)。
+    """
+    ph = tgt.placeholder
+    rows = tgt.fetchall(
+        f"select last_tick_at, acc_new, acc_upd from {tgt.schema}._datagen_state where source = {ph}", [source])
     now = now_tz()
-    if not rows:
-        tgt.execute(f"insert into {tgt.schema}._datagen_state values ({tgt.placeholder}, {tgt.placeholder})", [source, now])
+    if not rows:                                   # 初回 = seed 投入
+        tgt.execute(f"insert into {tgt.schema}._datagen_state values ({ph}, {ph}, 0, 0)", [source, now])
         return seed, 0
-    elapsed_min = minutes_override if minutes_override is not None else (now - rows[0][0]).total_seconds() / 60.0
-    tgt.execute(f"update {tgt.schema}._datagen_state set last_tick_at = {tgt.placeholder} where source = {tgt.placeholder}", [now, source])
-    return round(profile["new_per_min"] * elapsed_min), round(profile["update_per_min"] * elapsed_min)
+    last_tick_at, acc_new, acc_upd = rows[0]
+    elapsed_min = minutes_override if minutes_override is not None else (now - last_tick_at).total_seconds() / 60.0
+    acc_new = (acc_new or 0) + profile["new_per_min"] * elapsed_min
+    acc_upd = (acc_upd or 0) + profile["update_per_min"] * elapsed_min
+    n_new, n_upd = int(acc_new), int(acc_upd)      # 整数部だけ生成
+    tgt.execute(
+        f"update {tgt.schema}._datagen_state set last_tick_at={ph}, acc_new={ph}, acc_upd={ph} where source={ph}",
+        [now, acc_new - n_new, acc_upd - n_upd, source])   # 端数は繰り越し
+    return n_new, n_upd
 
 
 def run_source(tgt, name, spec, profiles, minutes_override):
@@ -147,19 +168,42 @@ def run_source(tgt, name, spec, profiles, minutes_override):
     print(f"[datagen] raw_{name}: +{n_new} new, {n_changed} updated  (total {total})")
 
 
+def run_once(cfg, minutes_override):
+    """1 tick ぶん生成する。Snowflake 接続はその都度開いて閉じる(セッション切れに強い)。"""
+    tgt = SnowflakeTarget(cfg["target"])
+    try:
+        tgt.execute(f"create schema if not exists {tgt.schema}")
+        ensure_state(tgt)
+        for name, spec in cfg["sources"].items():    # 定義順に処理(ref 依存はこの順序に従う)
+            run_source(tgt, name, spec, cfg["profiles"], minutes_override)
+    finally:
+        tgt.close()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="datagen.yml")
-    ap.add_argument("--minutes", type=float, default=None, help="経過分を固定(検証用)")
+    ap.add_argument("--minutes", type=float, default=None, help="経過分を固定(単発実行・検証用)")
+    ap.add_argument("--daemon", action="store_true", help="一定間隔で生成し続ける(裏で常駐)")
+    ap.add_argument("--interval", type=float, default=60.0, help="--daemon の生成間隔(秒、既定60)")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(args.config))
-    tgt = SnowflakeTarget(cfg["target"])
-    print(f"[datagen] target = snowflake ({tgt.schema})")
-    tgt.execute(f"create schema if not exists {tgt.schema}")
-    for name, spec in cfg["sources"].items():        # 定義順に処理(ref 依存はこの順序に従う)
-        run_source(tgt, name, spec, cfg["profiles"], args.minutes)
-    tgt.close()
+
+    if not args.daemon:                              # 単発
+        run_once(cfg, args.minutes)
+        return
+
+    print(f"[datagen] daemon 開始: {args.interval:.0f}秒ごとに生成 (Ctrl+C で停止)")
+    while True:                                      # 常駐: 実経過時間ぶんを毎回生成
+        try:
+            run_once(cfg, None)
+        except KeyboardInterrupt:
+            print("\n[datagen] 停止しました")
+            break
+        except Exception as e:                       # 一時的な接続エラー等は握りつぶして継続
+            print(f"[datagen] エラー(継続します): {e}")
+        time.sleep(args.interval)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,9 @@
 # 源泉ジェネレータの宣言設定。ここに source を1ブロック足すだけで源泉が増える。
-# 実行: uv run python generate.py                (前回からの実経過時間で件数を算出)
-#       uv run python generate.py --minutes 30   (30分経過したものとして生成 = 検証用)
+# 実行:
+#   uv run python generate.py --daemon --interval 60   # 常駐。60秒ごとに実経過ぶんを生成
+#   uv run python generate.py                          # 単発。前回からの実経過時間で件数を算出
+#   uv run python generate.py --minutes 30             # 単発。30分経過したものとして生成(検証用)
+# tick の端数は state に繰り越すので、短間隔デーモンでも「5分に1人」を正しく実現する。
 
 # 出力先 Snowflake。dbt の profiles.yml と source スキーマ(<dbt schema>_raw)を合わせる。
 target:

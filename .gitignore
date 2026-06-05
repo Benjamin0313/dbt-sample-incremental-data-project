@@ -3,6 +3,7 @@ dbt_packages/
 dbt_internal_packages/
 logs/
 target/
+*.log
 
 # secrets / env
 .env
