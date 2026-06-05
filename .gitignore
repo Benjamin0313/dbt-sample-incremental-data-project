@@ -3,12 +3,10 @@ dbt_packages/
 dbt_internal_packages/
 logs/
 target/
+
+# secrets / env
 .env
 .user.yml
-
-# DuckDB local warehouse (源泉・モデルの実体。マスターは master_data/*.csv が正)
-*.duckdb
-*.duckdb.wal
 
 # uv / Python
 .venv/
